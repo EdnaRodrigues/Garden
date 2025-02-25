@@ -35,14 +35,14 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(Garden Garden.c )
+add_executable(Garden Garden.c include/ssd1306.c)
 
 pico_set_program_name(Garden "Garden")
 pico_set_program_version(Garden "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(Garden 0)
-pico_enable_stdio_usb(Garden 0)
+pico_enable_stdio_uart(Garden 1)
+pico_enable_stdio_usb(Garden 1)
 
 # Add the standard library to the build
 target_link_libraries(Garden
@@ -55,8 +55,8 @@ target_include_directories(Garden PRIVATE
 
 # Add any user requested libraries
 target_link_libraries(Garden 
-        
-        )
+        hardware_i2c
+        hardware_adc
+        hardware_pwm)
 
 pico_add_extra_outputs(Garden)
-
