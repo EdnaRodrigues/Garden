@@ -1,0 +1,4 @@
+[wokwi]
+version = 1
+firmware = 'build/Garden.uf2'
+elf = 'build/Garden.elf'
