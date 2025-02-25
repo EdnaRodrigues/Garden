@@ -40,12 +40,17 @@ add_executable(Garden Garden.c include/ssd1306.c)
 pico_set_program_name(Garden "Garden")
 pico_set_program_version(Garden "0.1")
 
+# Generate PIO header
+pico_generate_pio_header(Garden ${CMAKE_CURRENT_LIST_DIR}/matriz.pio)
+
+target_sources(Garden PRIVATE Garden.c)
+
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(Garden 1)
 pico_enable_stdio_usb(Garden 1)
 
 # Add the standard library to the build
-target_link_libraries(Garden
+target_link_libraries(Garden PRIVATE
         pico_stdlib)
 
 # Add the standard include files to the build
@@ -54,7 +59,8 @@ target_include_directories(Garden PRIVATE
 )
 
 # Add any user requested libraries
-target_link_libraries(Garden 
+target_link_libraries(Garden PRIVATE
+        hardware_pio
         hardware_i2c
         hardware_adc
         hardware_pwm)
