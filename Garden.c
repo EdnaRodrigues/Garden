@@ -5,6 +5,7 @@
 #include "hardware/i2c.h" // Biblioteca para controle da comunicação I2C
 #include "include/ssd1306.h" // Biblioteca para controle do display OLED
 #include "hardware/adc.h" // Biblioteca para controle da conversão ADC
+#include "hardware/timer.h" // Biblioeca para controle do Timer
 #include "hardware/pwm.h" // Biblioteca para controle do PWM
 #include "pico/bootrom.h" // A ser retirado, permanece durante o periodo de desenvolvimento
 
@@ -27,27 +28,21 @@
 #define address 0x3C
 ssd1306_t ssd; // Inicializa a estrutura do display para todas as funções
 
-// Variáveis da comunicação PWM
-#define Divisor 8
-#define Wrap 0xFFFF
-uint slice_num;
-uint16_t pwm_level = 0;
+// Variáveis de controle do alerta
+#define Alerta_ms 5000  // Tempo do alerta (ms)
+#define Intervalo_us 15000000// 15s 180000000  // 3 minutos em microssegundos
+volatile bool evento = true;  // Estado do evento para acionamento do buzzer
+struct repeating_timer sirene_timer;  // Timer de hardware para acionamento do buzzer a cada Intervalo_us
+uint slice_num;  // Número do slice do PWM
+#define divider 4.0f  // Divisor do clock para o PWM
 
-//Variáveis Globais para permitir a função de saída da matriz de LEDs
+// Variáveis Globais para permitir a função de saída da matriz de LEDs
 PIO pio;
 uint sm;
-double intensity = 0;
-static volatile uint32_t last_time = 0; // Armazena o tempo do último evento (em microssegundos)
+double intensity = 0.1;
 
-// Funções de inicialização do PWM
-void pwm_setup(uint pin, uint *slice, uint16_t level) { 
-    gpio_set_function(pin, GPIO_FUNC_PWM); // Habilita o pino como PWM
-    *slice = pwm_gpio_to_slice_num(pin); // Obtem o canal PWM da GPIO
-    pwm_set_clkdiv(*slice, Divisor); // Define o divisor de clock do PWM
-    pwm_set_wrap(*slice, Wrap); // Define o valor de wrap
-    pwm_set_gpio_level(pin, level); // Define o ciclo de trabalho ativo do pwm para 2400 μs
-    pwm_set_enabled(*slice, true); //habilita o pwm no slice correspondente
-}
+// Variável para debounce dos botões
+static volatile uint32_t last_time = 0; // Armazena o tempo do último evento (em microssegundos)
 
 // Função de definição de dados para Matriz de LEDs
 uint32_t matrix_rgb (double r, double g, double b) {
@@ -59,10 +54,12 @@ uint32_t matrix_rgb (double r, double g, double b) {
 }
 
 // Função de acionamento da Matriz de LEDs
-void desenho (int n) {
+void desenho () {
     uint32_t valor_led;
-    valor_led = matrix_rgb(intensity, intensity, intensity); // LED apagado para os espaços vazios
-    pio_sm_put_blocking(pio, sm, valor_led);
+    for (int16_t i = 0; i < 25; i++) {
+        valor_led = matrix_rgb(intensity, intensity, intensity); // LED apagado para os espaços vazios
+        pio_sm_put_blocking(pio, sm, valor_led);
+    }
 }
 
 //Rotinas de Interrupção dos Botões
@@ -84,6 +81,7 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
 
 // Função de inicialização de entradas, saídas e interrupções
 void init_pins(){
+    // Entradas e habilitação de interrupções
     gpio_init(Bot_Left); // Inicializa o pino do botão esquerdo
     gpio_set_dir(Bot_Left, GPIO_IN); // Configura o pino do botão esquerdo como entrada
     gpio_pull_up(Bot_Left); // Habilita o pull-up do botão esquerdo
@@ -96,6 +94,14 @@ void init_pins(){
     gpio_set_dir(Bot_Confirm, GPIO_IN); // Configura o pino do botão de confirmação como entrada
     gpio_pull_up(Bot_Confirm); // Habilita o pull-up do botão de confirmação
     gpio_set_irq_enabled_with_callback(Bot_Confirm, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler); // Habilita a interrupção por borda de descida no botão de confirmação
+
+    // Saídas
+    gpio_init(Matriz); // Inicializa o pino da matriz de LEDs
+    gpio_set_dir(Matriz, GPIO_OUT); // Configura o pino da matriz de LEDs como saída
+    gpio_init(Buzzer); // Inicializa o pino do buzzer
+    gpio_set_dir(Buzzer, GPIO_OUT); // Configura o pino do buzzer como saída
+    gpio_init(Relay); // Inicializa o pino do relé
+    gpio_set_dir(Relay, GPIO_OUT); // Configura o pino do relé como saída
 }
 
 // Função de inicialização de protocolo de comunicação I2C, PWM e ADC
@@ -113,19 +119,113 @@ void init_process(){
     // Limpa o display. O display inicia com todos os pixels apagados.
     ssd1306_fill(&ssd, false);
     ssd1306_send_data(&ssd);
-
+    
     adc_gpio_init(Sensor_Luz); // Inicializa o pino do sensor LDR
     adc_gpio_init(Sensor_Umidade); // Inicializa o pino do sensor de umidade
-
-    pwm_setup(Buzzer, &slice_num, pwm_level); // Inicializa o PWM do buzzer
 }
 
-int main()
-{
+// Configura o PWM para uma frequência específica
+void set_pwm_frequency(uint freq_hz) {
+    slice_num = pwm_gpio_to_slice_num(Buzzer);
+    uint32_t clock_speed = 125000000; // Clock padrão do RP2040 (125 MHz)
+    uint32_t wrap = (clock_speed / (freq_hz * divider)) - 1;
+
+    pwm_set_clkdiv(slice_num, divider);
+    pwm_set_wrap(slice_num, wrap);
+    pwm_set_gpio_level(Buzzer, wrap / 2);  // 50% duty cycle
+}
+
+// Função para tocar a sirene com alternância de 1s ligado / 1s desligado
+void tocar_sirene() {
+    if (!evento) return;  // Se o evento estiver desativado, não toca
+
+    printf("Sirene ativada!\n");
+    uint32_t start_time = to_ms_since_boot(get_absolute_time());
+    
+    while ((to_ms_since_boot(get_absolute_time()) - start_time) < Alerta_ms) {
+        // Liga o buzzer com um som alternante
+        pwm_set_enabled(slice_num, true);
+        set_pwm_frequency(2000); // Frequência inicial
+        sleep_ms(500);
+        set_pwm_frequency(4000); // Frequência alternada
+        sleep_ms(500);
+        
+        // Desliga o buzzer por 1 segundo
+        pwm_set_enabled(slice_num, false);
+        sleep_ms(1000);
+    }
+
+    // Garante que o buzzer está completamente desligado após os 20 segundos
+    pwm_set_gpio_level(Buzzer, 0);
+    pwm_set_enabled(slice_num, false);
+    printf("Sirene desligada.\n");
+}
+
+// Callback do Timer - chama a sirene no intervalo definido
+bool sirene_callback(struct repeating_timer *t) {
+    tocar_sirene();
+    return true; // Mantém a repetição do timer
+}
+
+// Função para tocar o alerta (com verificação do evento)
+void tocar_alerta() {
+    if (!evento) return;  // Se o evento não estiver ativo, não toca
+    
+    printf("Tocando alerta...\n");
+    // Função para tocar uma sirene alternando entre as notas Agudas e graves
+    int tempo = 300;  // Tempo de cada nota (ms)
+    int ciclos = Alerta_ms / (2 * tempo);  // Número de alternâncias
+
+    for (int i = 0; i < ciclos; i++) {
+        // Nota aguda
+        int periodo1 = 1000000 / 400;
+        int ciclos1 = (400 * tempo) / 1000;
+        for (int j = 0; j < ciclos1; j++) {
+            gpio_put(Buzzer, true);
+            sleep_us(periodo1 / 2);
+            gpio_put(Buzzer, false);
+            sleep_us(periodo1 / 2);
+        }
+        printf("Nota aguda\n");
+        sleep_ms(200);  // Pequena pausa entre notas
+
+        // Nota grave
+        int periodo2 = 1000000 / 250;
+        int ciclos2 = (250 * tempo) / 1000;
+        for (int j = 0; j < ciclos2; j++) {
+            gpio_put(Buzzer, true);
+            sleep_us(periodo2 / 2);
+            gpio_put(Buzzer, false);
+            sleep_us(periodo2 / 2);
+        }
+        printf("Nota grave\n");
+        sleep_ms(200);  // Pequena pausa antes de repetir
+    }
+}
+
+// Callback do Timer - dispara a cada 3 minutos
+bool tocar_alerta_callback(struct repeating_timer *t) {
+    tocar_alerta();
+    return true; // Mantém a repetição do timer
+}
+
+int main() {
+        
     stdio_init_all();
 
+    init_pins();
+    init_process();
+    desenho();
+
+    struct repeating_timer timer;
+    
+    // Inicia um timer que chama tocar_alerta_callback() após 3 minutos
+    add_repeating_timer_us(Intervalo_us, sirene_callback, NULL, &timer);
+
+    printf("Sistema iniciado! O buzzer tocará a cada 3 minutos se o evento estiver ativo.\n");
+
     while (true) {
-        printf("Hello, world!\n");
+        printf("Loop principal rodando...\n\n");
         sleep_ms(1000);
     }
 }
