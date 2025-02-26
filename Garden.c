@@ -31,8 +31,10 @@ ssd1306_t ssd; // Inicializa a estrutura do display para todas as funções
 // Variáveis de controle do alerta
 #define Alerta_ms 5000  // Tempo do alerta (ms)
 #define Intervalo_us 15000000// 15s 180000000  // 3 minutos em microssegundos
-volatile bool evento = false;  // Estado do evento para acionamento do buzzer
+volatile bool evento = true;  // Estado do evento para acionamento do buzzer
 struct repeating_timer sirene_timer;  // Timer de hardware para acionamento do buzzer a cada Intervalo_us
+uint slice_num;  // Número do slice do PWM
+#define divider 4.0f  // Divisor do clock para o PWM
 
 // Variáveis Globais para permitir a função de saída da matriz de LEDs
 PIO pio;
@@ -122,6 +124,49 @@ void init_process(){
     adc_gpio_init(Sensor_Umidade); // Inicializa o pino do sensor de umidade
 }
 
+// Configura o PWM para uma frequência específica
+void set_pwm_frequency(uint freq_hz) {
+    slice_num = pwm_gpio_to_slice_num(Buzzer);
+    uint32_t clock_speed = 125000000; // Clock padrão do RP2040 (125 MHz)
+    uint32_t wrap = (clock_speed / (freq_hz * divider)) - 1;
+
+    pwm_set_clkdiv(slice_num, divider);
+    pwm_set_wrap(slice_num, wrap);
+    pwm_set_gpio_level(Buzzer, wrap / 2);  // 50% duty cycle
+}
+
+// Função para tocar a sirene com alternância de 1s ligado / 1s desligado
+void tocar_sirene() {
+    if (!evento) return;  // Se o evento estiver desativado, não toca
+
+    printf("Sirene ativada!\n");
+    uint32_t start_time = to_ms_since_boot(get_absolute_time());
+    
+    while ((to_ms_since_boot(get_absolute_time()) - start_time) < Alerta_ms) {
+        // Liga o buzzer com um som alternante
+        pwm_set_enabled(slice_num, true);
+        set_pwm_frequency(2000); // Frequência inicial
+        sleep_ms(500);
+        set_pwm_frequency(4000); // Frequência alternada
+        sleep_ms(500);
+        
+        // Desliga o buzzer por 1 segundo
+        pwm_set_enabled(slice_num, false);
+        sleep_ms(1000);
+    }
+
+    // Garante que o buzzer está completamente desligado após os 20 segundos
+    pwm_set_gpio_level(Buzzer, 0);
+    pwm_set_enabled(slice_num, false);
+    printf("Sirene desligada.\n");
+}
+
+// Callback do Timer - chama a sirene no intervalo definido
+bool sirene_callback(struct repeating_timer *t) {
+    tocar_sirene();
+    return true; // Mantém a repetição do timer
+}
+
 // Função para tocar o alerta (com verificação do evento)
 void tocar_alerta() {
     if (!evento) return;  // Se o evento não estiver ativo, não toca
@@ -175,7 +220,7 @@ int main() {
     struct repeating_timer timer;
     
     // Inicia um timer que chama tocar_alerta_callback() após 3 minutos
-    add_repeating_timer_us(Intervalo_us, tocar_alerta_callback, NULL, &timer);
+    add_repeating_timer_us(Intervalo_us, sirene_callback, NULL, &timer);
 
     printf("Sistema iniciado! O buzzer tocará a cada 3 minutos se o evento estiver ativo.\n");
 
