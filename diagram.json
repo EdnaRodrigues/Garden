@@ -108,7 +108,7 @@
     [ "joystick1:GND", "pico:GND.6", "black", [ "h-9.6", "v96" ] ],
     [ "joystick1:SEL", "pico:GP22", "gray", [ "h-19.2", "v96" ] ],
     [ "joystick1:VERT", "pico:GP26", "yellow", [ "h-38.4", "v96" ] ],
-    [ "joystick1:HORZ", "pico:RUN", "#8f4814", [ "h-28.8", "v96" ] ],
+    [ "joystick1:HORZ", "pico:GP27", "#8f4814", [ "h-28.8", "v96" ] ],
     [ "btn4:1.r", "pico:GP5", "gray", [ "v0" ] ],
     [ "pico:GP6", "btn3:1.r", "gray", [ "h-96", "v-57.8" ] ],
     [ "btn4:2.r", "pico:GND.2", "black", [ "v0" ] ],
