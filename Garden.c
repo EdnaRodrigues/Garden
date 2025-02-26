@@ -29,8 +29,8 @@
 ssd1306_t ssd; // Inicializa a estrutura do display para todas as funções
 
 // Variáveis de controle do alerta
-#define Alerta_ms 5000  // Tempo do alerta (ms)
-#define Intervalo_us 15000000// 15s 180000000  // 3 minutos em microssegundos
+#define Alerta_ms 2000  // Tempo do alerta (ms)
+#define Intervalo_us 8000000// 15s 180000000  // 3 minutos em microssegundos
 volatile bool evento = true;  // Estado do evento para acionamento do buzzer
 struct repeating_timer sirene_timer;  // Timer de hardware para acionamento do buzzer a cada Intervalo_us
 uint slice_num;  // Número do slice do PWM
@@ -57,7 +57,7 @@ uint32_t matrix_rgb (double r, double g, double b) {
 void desenho () {
     uint32_t valor_led;
     for (int16_t i = 0; i < 25; i++) {
-        valor_led = matrix_rgb(intensity, intensity, intensity); // LED apagado para os espaços vazios
+        valor_led = matrix_rgb(intensity, intensity, intensity-0.05);
         pio_sm_put_blocking(pio, sm, valor_led);
     }
 }
@@ -96,15 +96,19 @@ void init_pins(){
     gpio_set_irq_enabled_with_callback(Bot_Confirm, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler); // Habilita a interrupção por borda de descida no botão de confirmação
 
     // Saídas
-    gpio_init(Matriz); // Inicializa o pino da matriz de LEDs
-    gpio_set_dir(Matriz, GPIO_OUT); // Configura o pino da matriz de LEDs como saída
-    gpio_init(Buzzer); // Inicializa o pino do buzzer
-    gpio_set_dir(Buzzer, GPIO_OUT); // Configura o pino do buzzer como saída
+    //gpio_init(Buzzer); // Inicializa o pino do buzzer
+    //gpio_set_dir(Buzzer, GPIO_OUT); // Configura o pino do buzzer como saída
     gpio_init(Relay); // Inicializa o pino do relé
     gpio_set_dir(Relay, GPIO_OUT); // Configura o pino do relé como saída
+
+    //Configurações da PIO e saída da Matriz de LEDs
+    pio = pio0;
+    uint offset = pio_add_program(pio, &matriz_program);
+    sm = pio_claim_unused_sm(pio, true);
+    matriz_program_init(pio, sm, offset, Matriz);
 }
 
-// Função de inicialização de protocolo de comunicação I2C, PWM e ADC
+// Função de inicialização de protocolo de comunicação I2C e ADC
 void init_process(){
     // Inicialização da comunicação I2C. Utilizando a frequência de 400Khz.
     i2c_init(I2C_PORT, 400*1000);
@@ -146,10 +150,9 @@ void tocar_sirene() {
         // Liga o buzzer com um som alternante
         pwm_set_enabled(slice_num, true);
         set_pwm_frequency(2000); // Frequência inicial
-        sleep_ms(500);
+        sleep_ms(1500);
         set_pwm_frequency(4000); // Frequência alternada
-        sleep_ms(500);
-        
+        sleep_ms(1500);
         // Desliga o buzzer por 1 segundo
         pwm_set_enabled(slice_num, false);
         sleep_ms(1000);
@@ -216,6 +219,9 @@ int main() {
     init_pins();
     init_process();
     desenho();
+
+    // Váriáveis utilizadas na main()
+    pio = pio0;
 
     struct repeating_timer timer;
     
