@@ -77,7 +77,7 @@ Este sistema **reduz a dependência do monitoramento manual**, promovendo um cul
 ---
 
 ## 📽️ Demonstração
-(Adicionar link para vídeo ou imagens do projeto em funcionamento)
+[Adicionar link para vídeo ou imagens do projeto em funcionamento](https://youtu.be/s0fULUZS2p4)
 
 ---
 
