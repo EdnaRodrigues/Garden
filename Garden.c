@@ -41,7 +41,7 @@ uint slice_num; // Número do slice do PWM
 
 // Variáveis de controle da conversão ADC
 uint16_t adc_value_luz, adc_value_umidade; // Valores lidos dos sensores de luminosidade e umidade do solo
-double umidade = 50; // Variável para armazenar o valor de umidade do solo
+double umidade; // Variável para armazenar o valor de umidade do solo
 
 // Variáveis Globais para permitir a função de saída da matriz de LEDs
 PIO pio;
@@ -225,12 +225,7 @@ int main() {
 
     init_pins();
     init_process();
-    //tocar_alerta();
-    //desenho();
-
-    // Váriáveis utilizadas na main()
-    pio = pio0;
-
+    
     while (true) {
         
         ssd1306_fill(&ssd, 0); // Limpa o display
