@@ -168,7 +168,7 @@ int64_t turn_off_callback(alarm_id_t id, void *user_data) {
 // Função para tocar o alerta alternando entre 250 Hz e 400 Hz
 void tocar_alerta() {
     printf("Verificando alerta...\n");
-    sleep_ms(4000); // Aguarda 4 segundos antes de tocar o alerta, verifica se a umidade ainda está abaixo do ideal mesmo com a bomba ligada
+    sleep_ms(tempo_rega*1000-1000); // Aguarda 4 segundos antes de tocar o alerta, verifica se a umidade ainda está abaixo do ideal mesmo com a bomba ligada
     evento = (gpio_get(Relay) && umidade*100 < (ideal - 20)); // Verifica se o evento de alerta precisa ser acionado
     if (!evento) {
         printf("Alerta cancelado...\n");
